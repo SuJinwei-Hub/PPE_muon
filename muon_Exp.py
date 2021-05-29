@@ -52,12 +52,15 @@ class Lifetime:
         y = np.array(n)
         popt, pcov = curve_fit(func_exp, x, y)
         yval = func_exp(x, popt[0], popt[1], popt[2])
-        plt.plot(x, yval)
+        perr = np.sqrt(np.diag(pcov))
+        r2 = round(np.corrcoef(y, yval)[0, 1] ** 2, 4)
+        plt.plot(x, yval, label='$\\tau$ = %5.3f' %popt[1] + '$\pm$' + '%5.3f' %perr[1] + '\n' + '$R^2$ = %5.4f' % r2)
         plt.xlabel('寿命区间/$\mu$s')
         plt.ylabel('频数')
+        plt.legend()
         plt.savefig(path + '\\' + self.num + "_decay.png")
         plt.close()
-        return popt[1]
+        return popt[1], perr[1]
 
 
 class Flux:
@@ -98,11 +101,13 @@ class Flux:
         sig_max = np.std(x) * 3
         param_bounds = ([0, 0, 0, 0], [10000, mu_max, sig_max, 1000])  # 指定参数的范围
         popt, pcov = curve_fit(func_guass, x, y, bounds=param_bounds)
+        r2 = round(np.corrcoef(y, func_guass(x, popt[0], popt[1], popt[2], popt[3]))[0, 1] ** 2, 4)
         x = np.linspace(np.min(x), np.max(x), 50)
         yval = func_guass(x, popt[0], popt[1], popt[2], popt[3])
-        plt.plot(x, yval, 'r--')
+        plt.plot(x, yval, 'r--', label='$\Phi$ = %5.3f' %popt[1] + '$\pm$' + '%5.3f' %popt[2] + '\n' + '$R^2$ = %5.4f' % r2)
         plt.xlabel('通量区间')
         plt.ylabel('频数')
+        plt.legend(loc=1)
         plt.savefig(path + '\\' + self.num + "_flux.png")
         plt.close()
         return [popt[1], popt[2]]
@@ -125,13 +130,16 @@ def decay():
     pathIn = 'data_decay'
     pathOut = 'fig_decay'
     time = []
+    sigma = []
     for i in range(1, fnum + 1):
         txtname = pathIn + '\\' + "muondecay_" + str(i) + ".txt"
         mu_lifetime = Lifetime(txtname, str(i))
         lt = mu_lifetime.data()
-        time.append(mu_lifetime.hist_fit(lt, pathOut))
+        tau, sig = mu_lifetime.hist_fit(lt, pathOut)
+        time.append(tau)
+        sigma.append(sig)
     np.savetxt('muon_lifetime.txt', time)
-    return np.mean(time)
+    return np.mean(time), np.mean(sigma)
 
 
 def flux(path, x, fnum, name):
@@ -162,8 +170,8 @@ def main():
             print("EXIT!")
             break
         elif sw == 1:
-            t = decay()
-            print("The lifetime of muon is " + str(t) + ' us')
+            t, s = decay()
+            print("The lifetime of muon is " + str(t) + '±' + str(s) + 'us')
             print("Completed!")
         elif sw == 2:
             sw2 = int(input("*Select variable {Exit(0); HV(1); Threshold(2); Direction(3)}:"))
