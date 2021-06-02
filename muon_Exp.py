@@ -2,6 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy.optimize import curve_fit
 import datetime
+from scipy.integrate import quad
 
 
 start = datetime.datetime.now()
@@ -44,11 +45,14 @@ class Lifetime:
             item = f.readline()
         return lt
 
-    def hist_fit(self, lt, path):
+    def hist_fit(self, lt, path, judge, para):
         plt.rc('font', family='simhei', size=15)
         bin = np.linspace(0, np.max(lt), 30)
         n, bins, patches = plt.hist(lt, bins=bin, edgecolor='black', alpha=0.8)
-        x = mean_of_next(bins)
+        if judge:
+            x = Lifetime.bary_center(self, para, bins)
+        else:
+            x = mean_of_next(bins)
         y = np.array(n)
         popt, pcov = curve_fit(func_exp, x, y)
         yval = func_exp(x, popt[0], popt[1], popt[2])
@@ -60,7 +64,16 @@ class Lifetime:
         plt.legend()
         plt.savefig(path + '\\' + self.num + "_decay.png")
         plt.close()
-        return popt[1], perr[1]
+        return popt, perr[1]
+
+    def bary_center(self, para, bins):      # 积分计算重心
+        x = []
+        for i in range(0, len(bins)-1):
+            v = quad(func_exp, bins[i], bins[i+1], args=(para[0], para[1], para[2]))
+            yi = v[0]/(bins[i+1] - bins[i])
+            xi = para[1] * np.log(para[0]/(yi - para[2]))
+            x.append(xi)
+        return np.array(x)
 
 
 class Flux:
@@ -119,24 +132,31 @@ def cos2_fit(x, y, path):
     x = np.linspace(np.min(x), np.max(x), 30)
     yval = func_cos2(x, popt[0], popt[1])
     plt.plot(x, yval)
+    plt.ylim([0, 20])
     plt.xlabel(path + '(rad)')
     plt.ylabel('通量')
     plt.savefig('fig_flux' + '\\' + path + "_fit.png")
     plt.close()
 
 
-def decay():
-    fnum = 20
+def decay(judge):
+    fnum = 1
     pathIn = 'data_decay'
     pathOut = 'fig_decay'
     time = []
     sigma = []
+    popt = 0
+    judge2 = 0
     for i in range(1, fnum + 1):
         txtname = pathIn + '\\' + "muondecay_" + str(i) + ".txt"
         mu_lifetime = Lifetime(txtname, str(i))
         lt = mu_lifetime.data()
-        tau, sig = mu_lifetime.hist_fit(lt, pathOut)
-        time.append(tau)
+        popt, sig = mu_lifetime.hist_fit(lt, pathOut, judge2, popt)
+        if judge:
+            judge2 = 1
+            for j in range(2):
+                popt, sig = mu_lifetime.hist_fit(lt, pathOut, judge2, popt)
+        time.append(popt[1])
         sigma.append(sig)
     np.savetxt('muon_lifetime.txt', time)
     return np.mean(time), np.mean(sigma)
@@ -155,6 +175,7 @@ def flux(path, x, fnum, name):
     flu = np.array(flu)
     np.savetxt(pathOut + '.txt', flu)
     plt.errorbar(x, flu[:, 0], yerr=flu[:, 1], fmt="bo:", capsize=8)
+    plt.ylim([0, 20])
     plt.xlabel(path + name)
     plt.ylabel('通量')
     plt.savefig(pathOut + ".png")
@@ -170,7 +191,8 @@ def main():
             print("EXIT!")
             break
         elif sw == 1:
-            t, s = decay()
+            judge = int(input("*Iterative calculation of integral {Yes(1); No(0)}:"))
+            t, s = decay(judge)
             print("The lifetime of muon is " + str(t) + '±' + str(s) + 'us')
             print("Completed!")
         elif sw == 2:
